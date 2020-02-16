@@ -1,0 +1,38 @@
+<annotation>
+	<folder>Pics to be Resized</folder>
+	<filename>1023.jpg</filename>
+	<path>F:\Pics to be Resized\1023.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>320</width>
+		<height>240</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>power_cell</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>140</xmin>
+			<ymin>51</ymin>
+			<xmax>203</xmax>
+			<ymax>107</ymax>
+		</bndbox>
+	</object>
+	<object>
+		<name>power_cell</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>166</xmin>
+			<ymin>111</ymin>
+			<xmax>237</xmax>
+			<ymax>183</ymax>
+		</bndbox>
+	</object>
+</annotation>

@@ -1,0 +1,38 @@
+<annotation>
+	<folder>images</folder>
+	<filename>102.jpg</filename>
+	<path>C:\Users\LabCollin\Desktop\yellow balls jpg\images\102.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>320</width>
+		<height>240</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>power_cell</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>114</xmin>
+			<ymin>102</ymin>
+			<xmax>150</xmax>
+			<ymax>138</ymax>
+		</bndbox>
+	</object>
+	<object>
+		<name>power_cell</name>
+		<pose>Unspecified</pose>
+		<truncated>1</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>55</xmin>
+			<ymin>204</ymin>
+			<xmax>105</xmax>
+			<ymax>240</ymax>
+		</bndbox>
+	</object>
+</annotation>
