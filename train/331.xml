@@ -1,0 +1,38 @@
+<annotation>
+	<folder>images</folder>
+	<filename>331.jpg</filename>
+	<path>C:\Users\Ross\Desktop\Literally Everything Part 2 - Battle Tendency\darkflow-master\images\331.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>320</width>
+		<height>240</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>power_cell</name>
+		<pose>Unspecified</pose>
+		<truncated>1</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>195</xmin>
+			<ymin>205</ymin>
+			<xmax>250</xmax>
+			<ymax>240</ymax>
+		</bndbox>
+	</object>
+	<object>
+		<name>power_cell</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>143</xmin>
+			<ymin>68</ymin>
+			<xmax>195</xmax>
+			<ymax>135</ymax>
+		</bndbox>
+	</object>
+</annotation>
