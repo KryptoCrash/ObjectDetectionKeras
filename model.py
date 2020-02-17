@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import glob
-#import pathlib
+import pathlib
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 BATCH_SIZE = 32
@@ -33,13 +33,12 @@ def build(img_w, img_h, grid_w, grid_h, nb_boxes, nb_classes):
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs, name='YoloV3')
 
-#data_dir = pathlib.Path('./images')
+data_dir = pathlib.Path('./images')
 
-CLASS_NAMES = np.array(['power_cell'])
-#print(CLASS_NAMES)
-list_ds = tf.data.Dataset.list_files('./images/*.jpg')
-# for f in list_ds.take(5):
-#   print(f.numpy())
+CLASS_NAMES = np.array([item.name for item in data_dir.glob('*') if item.name != "LICENSE.txt"])
+list_ds = tf.data.Dataset.list_files(str(data_dir/'*/*'))
+#for f in list_ds.take(5):
+    #print(f.numpy())
 
 def get_label(file_path):
   # convert the path to a list of path components
