@@ -13,7 +13,6 @@ BATCH_SIZE = 32
 IMG_HEIGHT = 416
 IMG_WIDTH = 416
 
-
 def build(img_w, img_h, grid_w, grid_h, nb_boxes, nb_classes):
     inputs = tf.keras.Input(shape=(img_w, img_h, 3))
     x = layers.Conv2D(16, (1, 1))(inputs)
@@ -105,6 +104,13 @@ def show_batch(image_batch, label_batch):
       plt.imshow(image_batch[n])
       plt.title(CLASS_NAMES[label_batch[n]==1][0].title())
       plt.axis('off')
+
+raw_dataset = tf.data.TFRecordDataset(['train.record'])
+for raw_record in raw_dataset.take(1):
+  example = tf.train.Example()
+  example.ParseFromString(raw_record.numpy())
+  print(example)
+
 
 train_ds = prepare_for_training(labeled_ds) #I'm pretty sure this is the dataset now
 
