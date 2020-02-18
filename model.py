@@ -72,8 +72,9 @@ def decode_img(img):
 
 def encode_img(tensor):
     # resize the image to the desired size.
+    img = tf.image.resize(tensor, [240, 320])
     # Use `convert_image_dtype` to convert to uint8.
-    img = tf.image.convert_image_dtype(tensor, tf.uint8)
+    img = tf.image.convert_image_dtype(img, tf.uint8)
     # convert the 3D uint8 tensor to a compressed string
     return tf.image.encode_jpeg(img)
 
@@ -93,58 +94,67 @@ def format_dataset(dataset):
         filename = element['image/filename'].numpy().decode('utf-8')
         image_tensor = process_path('./images/power_cell/' + filename)
         # Map labels to format [gridPos, [x, y, w, h, conf]]
+        # Default label should be [0, 0, 0, 0, 0]
         label_tensor = k.zeros([GRID_CELLS ** 2, 2 * N_BOXES + N_CLASSES])
+        # Get data from element
         x_mins = element['image/object/bbox/xmin'].values.numpy()
         x_maxes = element['image/object/bbox/xmax'].values.numpy()
         y_mins = element['image/object/bbox/ymin'].values.numpy()
         y_maxes = element['image/object/bbox/ymax'].values.numpy()
+        # width = max - min
         widths = x_maxes - x_mins
         heights = y_maxes - y_mins
-        x_centers = x_mins + widths / 2
-        y_centers = y_mins + heights / 2
-        grid_x = tf.math.floor(x_centers * 12)
-        grid_y = tf.math.floor(y_centers * 12)
+        # center = avg(max, min)
+        img_x_centers = (x_mins + widths / 2)
+        img_y_centers = (y_mins + heights / 2)
+        # grid_xy = floor(center * grid_cells)
+        grid_x = tf.math.floor(img_x_centers * GRID_CELLS)
+        grid_y = tf.math.floor(img_y_centers * GRID_CELLS)
+        # Map centers relative to grid cell by removing reference to img position and scaling to grid size
+        x_centers = (img_x_centers % (1 / GRID_CELLS)) * GRID_CELLS
+        y_centers = (img_y_centers % (1 / GRID_CELLS)) * GRID_CELLS
+        # Update label tensor to have new data from bboxes
         for i in range(grid_x.shape[0]):
             label_tensor[int(grid_y[i] * GRID_CELLS + grid_x[i])].assign(
                 [x_centers[i], y_centers[i], widths[i], heights[i], 1])
+        # Add tensor to image/label list
         images.append(image_tensor)
         labels.append(label_tensor)
     return images, labels
 
 
+# Format dataset
 images, labels = format_dataset(parsed_image_dataset)
 
+# TESTS
 fh = open("imageToSave.jpeg", "wb")
+# Get example image from images
 fh.write(encode_img(images[0]).numpy())
 fh.close()
 pic = Image.open('imageToSave.jpeg')
 draw = ImageDraw.Draw(pic)
+# Get example label from labels
 example_label = labels[0]
 label = example_label[..., 4] > 0.3
 for i in range(label.shape[0]):
     if label[i]:
-        x_center = example_label[i][0]
-        y_center = example_label[i][1]
+        # Convert tensor type features back into image type features
+        grid_x = i % GRID_CELLS
+        grid_y = (i - grid_x) / GRID_CELLS
+        x_center = grid_x / GRID_CELLS + example_label[i][0] / GRID_CELLS
+        y_center = grid_y / GRID_CELLS + example_label[i][1] / GRID_CELLS
         width = example_label[i][2]
         height = example_label[i][3]
         x_min = x_center - width / 2
         y_min = y_center - height / 2
         x_max = x_min + width
         y_max = y_min + height
-        draw.rectangle([(x_min * IMG_WIDTH, y_min * IMG_HEIGHT), (x_max * IMG_WIDTH, y_max * IMG_HEIGHT)],
+        # Draw bboxes with image type features
+        draw.rectangle([(x_min * 320, y_min * 240), (x_max * 320, y_max * 240)],
                        outline=0xff0000,
                        width=3, fill=None)
 pic.show()
 
-
-# I'm pretty sure this is the dataset now
-# train_ds=prepare_for_training(labeled_ds)
-
-# image_batch, label_batch=next(iter(train_ds))
-
-# print(label_batch.numpy())
-
-# show_batch(image_batch.numpy(), label_batch.numpy())
 
 def calc_IOU(truth, pred):
     overlap_w = (truth.w + pred.w) / 2 - abs(truth.x - pred.x)
