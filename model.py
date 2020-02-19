@@ -10,34 +10,15 @@ import os
 import glob
 import pathlib
 import io
+import argparse
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 BATCH_SIZE = 32
 IMG_HEIGHT = 416
 IMG_WIDTH = 416
 GRID_CELLS = 12
-N_BOXES = 2
-N_CLASSES = 1
-
-
-def build(img_w, img_h, grid_w, grid_h, n_boxes, n_classes):
-    inputs = tf.keras.Input(shape=(img_w, img_h, 3))
-    x = layers.Conv2D(16, (1, 1))(inputs)
-    x = layers.Conv2D(32, (3, 3))(x)
-    x = layers.LeakyReLU(alpha=0.3)(x)
-    x = layers.MaxPooling2D(pool_size=(2, 2))(x)
-    x = layers.Conv2D(16, (3, 3))(x)
-    x = layers.Conv2D(32, (3, 3))(x)
-    x = layers.LeakyReLU(alpha=0.3)(x)
-    x = layers.MaxPooling2D(pool_size=(2, 2))(x)
-    x = layers.Flatten()(x)
-    x = layers.Dense(256, activation='sigmoid')(x)
-    x = layers.Dense(
-        grid_w * grid_h * (n_boxes * 5 + n_classes), activation='sigmoid')(x)
-    outputs = layers.Reshape(
-        (grid_w * grid_h, (n_boxes * 5 + n_classes)))(x)
-
-    model = tf.keras.Model(inputs=inputs, outputs=outputs, name='YoloV3')
+N_BOXES = 1
+N_CLASSES = 0
 
 
 raw_image_dataset = tf.data.TFRecordDataset('./train.record')
@@ -95,7 +76,7 @@ def format_dataset(dataset):
         image_tensor = process_path('./images/power_cell/' + filename)
         # Map labels to format [gridPos, [x, y, w, h, conf]]
         # Default label should be [0, 0, 0, 0, 0]
-        label_tensor = k.zeros([GRID_CELLS ** 2, 2 * N_BOXES + N_CLASSES])
+        label_tensor = k.zeros([GRID_CELLS ** 2, N_BOXES * 5 + N_CLASSES])
         # Get data from element
         x_mins = element['image/object/bbox/xmin'].values.numpy()
         x_maxes = element['image/object/bbox/xmax'].values.numpy()
@@ -115,52 +96,115 @@ def format_dataset(dataset):
         y_centers = (img_y_centers % (1 / GRID_CELLS)) * GRID_CELLS
         # Update label tensor to have new data from bboxes
         for i in range(grid_x.shape[0]):
-            label_tensor[int(grid_y[i] * GRID_CELLS + grid_x[i])].assign(
-                [x_centers[i], y_centers[i], widths[i], heights[i], 1])
+            label_tensor[int(grid_y[i] * GRID_CELLS + grid_x[i])].assign([x_centers[i], y_centers[i], widths[i], heights[i], 1])
         # Add tensor to image/label list
         images.append(image_tensor)
         labels.append(label_tensor)
-    return images, labels
+    return np.array(images), np.array(labels)
 
+
+def build(img_w, img_h, grid_w, grid_h, n_boxes, n_classes):
+    inputs = tf.keras.Input(shape=(img_w, img_h, 3))
+    x = layers.Conv2D(16, (1, 1))(inputs)
+    x = layers.Conv2D(32, (3, 3))(x)
+    x = layers.LeakyReLU(alpha=0.3)(x)
+    x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+    x = layers.Conv2D(16, (3, 3))(x)
+    x = layers.Conv2D(32, (3, 3))(x)
+    x = layers.LeakyReLU(alpha=0.3)(x)
+    x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+    x = layers.Flatten()(x)
+    x = layers.Dense(256, activation='sigmoid')(x)
+    x = layers.Dense(
+        grid_w * grid_h * (n_boxes * 5 + n_classes), activation='sigmoid')(x)
+    outputs = layers.Reshape(
+        (grid_w * grid_h, (n_boxes * 5 + n_classes)))(x)
+
+    model = tf.keras.Model(inputs=inputs, outputs=outputs, name='YoloV3')
+    return model
+
+
+def calc_loss(true, pred):
+    true_xy = true[..., :2]
+    pred_xy = pred[..., :2]
+    true_wh = true[..., 2:4]
+    pred_wh = pred[..., 2:4]
+    true_conf = true[..., 4]
+    pred_conf = pred[..., 4]
+    xy_loss = calc_xy_loss(true_xy, pred_xy, true_conf)
+    wh_loss = calc_wh_loss(true_wh, pred_wh, true_conf)
+    conf_loss = calc_conf_loss(true_conf, pred_conf, calc_IOU(true_xy, pred_xy, true_wh, pred_wh))
+    return xy_loss + wh_loss + conf_loss
+
+
+def calc_xy_loss(true_xy, pred_xy, true_conf):
+    return k.sum(k.square(true_xy - pred_xy) * true_conf, axis=-1)
+
+
+def calc_wh_loss(true_wh, pred_wh, true_conf):
+    return k.sum(k.square(true_wh - pred_wh) * true_conf, axis=-1)
+
+
+def calc_IOU(true_xy, pred_xy, true_wh, pred_wh):
+    intersect_wh = k.maximum(k.zeros_like(pred_wh), (pred_wh + true_wh) / 2 - k.square(pred_xy - true_xy))
+    intersect_area = intersect_wh[..., 0] * intersect_wh[..., 1]
+    true_area = true_wh[..., 0] * true_wh[..., 1]
+    pred_area = pred_wh[..., 0] * pred_wh[..., 1]
+    union_area = pred_area + true_area - intersect_area
+    return intersect_area / union_area
+
+
+def calc_conf_loss(true_conf, pred_conf, iou):
+    return k.sum(k.square(true_conf*iou - pred_conf),axis=-1)
 
 # Format dataset
 images, labels = format_dataset(parsed_image_dataset)
 
-# TESTS
-fh = open("imageToSave.jpeg", "wb")
-# Get example image from images
-fh.write(encode_img(images[0]).numpy())
-fh.close()
-pic = Image.open('imageToSave.jpeg')
-draw = ImageDraw.Draw(pic)
-# Get example label from labels
-example_label = labels[0]
-label = example_label[..., 4] > 0.3
-for i in range(label.shape[0]):
-    if label[i]:
-        # Convert tensor type features back into image type features
-        grid_x = i % GRID_CELLS
-        grid_y = (i - grid_x) / GRID_CELLS
-        x_center = grid_x / GRID_CELLS + example_label[i][0] / GRID_CELLS
-        y_center = grid_y / GRID_CELLS + example_label[i][1] / GRID_CELLS
-        width = example_label[i][2]
-        height = example_label[i][3]
-        x_min = x_center - width / 2
-        y_min = y_center - height / 2
-        x_max = x_min + width
-        y_max = y_min + height
-        # Draw bboxes with image type features
-        draw.rectangle([(x_min * 320, y_min * 240), (x_max * 320, y_max * 240)],
-                       outline=0xff0000,
-                       width=3, fill=None)
-pic.show()
+
+model = build(IMG_WIDTH, IMG_HEIGHT, GRID_CELLS, GRID_CELLS, N_BOXES, N_CLASSES)
+adam = keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, decay=0.01)
+model.compile(loss=calc_loss, optimizer=adam)
 
 
-def calc_IOU(truth, pred):
-    overlap_w = (truth.w + pred.w) / 2 - abs(truth.x - pred.x)
-    overlap_h = (truth.h + pred.h) / 2 - abs(truth.y - pred.y)
-    overlap_a = overlap_w * overlap_h
-    truth_a = truth.w * truth.h
-    pred_a = pred.w * pred.h
-    union_a = truth_a + pred_a - overlap_a
-    return overlap_a / union_a
+def test():
+    # TESTS
+    fh = open("imageToSave.jpeg", "wb")
+    # Get example image from images
+    fh.write(encode_img(images[0]).numpy())
+    fh.close()
+    pic = Image.open('imageToSave.jpeg')
+    draw = ImageDraw.Draw(pic)
+    # Get example label from labels
+    example_label = model.predict(images[0])
+    label = example_label[..., 4] > 0.3
+    for i in range(label.shape[0]):
+        if label[i]:
+            # Convert tensor type features back into image type features
+            grid_x = i % GRID_CELLS
+            grid_y = (i - grid_x) / GRID_CELLS
+            x_center = grid_x / GRID_CELLS + example_label[i][0] / GRID_CELLS
+            y_center = grid_y / GRID_CELLS + example_label[i][1] / GRID_CELLS
+            width = example_label[i][2]
+            height = example_label[i][3]
+            x_min = x_center - width / 2
+            y_min = y_center - height / 2
+            x_max = x_min + width
+            y_max = y_min + height
+            # Draw bboxes with image type features
+            draw.rectangle([(x_min * 320, y_min * 240), (x_max * 320, y_max * 240)],
+                           outline=0xff0000,
+                           width=3, fill=None)
+    pic.show()
+
+
+parser = argparse.ArgumentParser(description='Process some integers.')
+parser.add_argument('--train', help='train', action='store_true')
+parser.add_argument('--epoch', help='epoch', const='int', nargs='?', default=1)
+args = parser.parse_args()
+
+if args.train:
+    model.fit(images, labels, batch_size=64, epochs=int(args.epoch))
+    model.save_weights('weights_006.h5')
+    test()
+else:
+    model.load_weights('weights_006.h5')
