@@ -68,6 +68,7 @@ def process_path(file_path):
 
 
 def format_dataset(dataset):
+    #print("format called")
     images = []
     labels = []
     for element in dataset:
@@ -100,10 +101,16 @@ def format_dataset(dataset):
         # Add tensor to image/label list
         images.append(image_tensor)
         labels.append(label_tensor)
-    return np.array(images), np.array(labels)
+    #print("Format completed")
+    images = tf.convert_to_tensor(images, dtype=tf.float32)
+    #print("Images saved")
+    labels = tf.convert_to_tensor(labels, dtype=tf.float32)
+    #print("vars saved")
+    return (images, labels)
 
 
 def build(img_w, img_h, grid_w, grid_h, n_boxes, n_classes):
+    #print("build called")
     inputs = tf.keras.Input(shape=(img_w, img_h, 3))
     x = layers.Conv2D(16, (1, 1))(inputs)
     x = layers.Conv2D(32, (3, 3))(x)
@@ -121,12 +128,16 @@ def build(img_w, img_h, grid_w, grid_h, n_boxes, n_classes):
         (grid_w * grid_h, (n_boxes * 5 + n_classes)))(x)
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs, name='YoloV3')
+    #print("build completed")
     return model
 
 
 def calc_loss(true, pred):
+    #print("calc loss called")
     true_xy = true[..., :2]
+    #print(true_xy.shape)
     pred_xy = pred[..., :2]
+    #print(pred_xy.shape)
     true_wh = true[..., 2:4]
     pred_wh = pred[..., 2:4]
     true_conf = true[..., 4]
@@ -134,15 +145,18 @@ def calc_loss(true, pred):
     xy_loss = calc_xy_loss(true_xy, pred_xy, true_conf)
     wh_loss = calc_wh_loss(true_wh, pred_wh, true_conf)
     conf_loss = calc_conf_loss(true_conf, pred_conf, calc_IOU(true_xy, pred_xy, true_wh, pred_wh))
+    #print("calc loss completed")
     return xy_loss + wh_loss + conf_loss
 
 
 def calc_xy_loss(true_xy, pred_xy, true_conf):
-    return k.sum(k.square(true_xy - pred_xy) * true_conf, axis=-1)
+    #return k.sum(k.square(true_xy - pred_xy) * true_conf, axis=-1)
+    return k.sum(k.sum(k.square(true_xy - pred_xy),axis=-1)*true_conf, axis=-1)
 
 
 def calc_wh_loss(true_wh, pred_wh, true_conf):
-    return k.sum(k.square(true_wh - pred_wh) * true_conf, axis=-1)
+    #return k.sum(k.square(true_wh - pred_wh) * true_conf, axis=-1)
+    return k.sum(k.sum(k.square(true_wh - pred_wh),axis=-1)*true_conf, axis=-1)
 
 
 def calc_IOU(true_xy, pred_xy, true_wh, pred_wh):
@@ -156,14 +170,18 @@ def calc_IOU(true_xy, pred_xy, true_wh, pred_wh):
 
 def calc_conf_loss(true_conf, pred_conf, iou):
     return k.sum(k.square(true_conf*iou - pred_conf),axis=-1)
+    #return k.sum(k.sum(k.square(true_conf - pred_conf),axis=-1)*iou, axis=-1)
 
 # Format dataset
-images, labels = format_dataset(parsed_image_dataset)
+(images, labels) = format_dataset(parsed_image_dataset)
 
-
+#print("calling build")
 model = build(IMG_WIDTH, IMG_HEIGHT, GRID_CELLS, GRID_CELLS, N_BOXES, N_CLASSES)
+#print("Build should be completed")
 adam = keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, decay=0.01)
+#print("compiling")
 model.compile(loss=calc_loss, optimizer=adam)
+#print("Done compiling")
 
 
 def test():
@@ -175,10 +193,11 @@ def test():
     pic = Image.open('imageToSave.jpeg')
     draw = ImageDraw.Draw(pic)
     # Get example label from labels
-    example_label = model.predict(images[0])
+    example_label = model.predict(images[:1])[0]
     label = example_label[..., 4] > 0.3
     for i in range(label.shape[0]):
         if label[i]:
+            print(example_label[i])
             # Convert tensor type features back into image type features
             grid_x = i % GRID_CELLS
             grid_y = (i - grid_x) / GRID_CELLS
@@ -203,8 +222,10 @@ parser.add_argument('--epoch', help='epoch', const='int', nargs='?', default=1)
 args = parser.parse_args()
 
 if args.train:
-    model.fit(images, labels, batch_size=64, epochs=int(args.epoch))
+    #print("Before fit")
+    model.fit(images, labels, batch_size=32, epochs=int(args.epoch))
     model.save_weights('weights_006.h5')
     test()
 else:
     model.load_weights('weights_006.h5')
+    test()
