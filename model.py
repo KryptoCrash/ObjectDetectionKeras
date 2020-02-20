@@ -146,6 +146,8 @@ grid_loss = tf.Variable([[float(x), float(y)] for y in range(GRID_CELLS) for x i
 
 
 def calc_loss(true, pred):
+    print(true.shape)
+    print(pred.shape)
     #print(grid_loss.shape)
     true_xy = true[..., :2]
     #print(true_xy.shape)
