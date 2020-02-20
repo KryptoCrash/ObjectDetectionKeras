@@ -93,8 +93,8 @@ def format_dataset(dataset):
         grid_x = tf.math.floor(img_x_centers * GRID_CELLS)
         grid_y = tf.math.floor(img_y_centers * GRID_CELLS)
         # Map centers relative to grid cell by removing reference to img position and scaling to grid size
-        x_centers = (img_x_centers % (1 / GRID_CELLS)) * GRID_CELLS
-        y_centers = (img_y_centers % (1 / GRID_CELLS)) * GRID_CELLS
+        x_centers = ((img_x_centers % (1 / GRID_CELLS)) * GRID_CELLS) + grid_x
+        y_centers = ((img_y_centers % (1 / GRID_CELLS)) * GRID_CELLS) + grid_y
         # Update label tensor to have new data from bboxes
         for i in range(grid_x.shape[0]):
             label_tensor[int(grid_y[i] * GRID_CELLS + grid_x[i])].assign([x_centers[i], y_centers[i], widths[i], heights[i], 1])
@@ -120,6 +120,18 @@ def build(img_w, img_h, grid_w, grid_h, n_boxes, n_classes):
     x = layers.Conv2D(32, (3, 3))(x)
     x = layers.LeakyReLU(alpha=0.3)(x)
     x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+    x = layers.Conv2D(16, (3, 3))(x)
+    x = layers.Conv2D(32, (3, 3))(x)
+    x = layers.LeakyReLU(alpha=0.3)(x)
+    x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+    x = layers.Conv2D(16, (3, 3))(x)
+    x = layers.Conv2D(32, (3, 3))(x)
+    x = layers.LeakyReLU(alpha=0.3)(x)
+    x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+    x = layers.Conv2D(16, (3, 3))(x)
+    x = layers.Conv2D(32, (3, 3))(x)
+    x = layers.LeakyReLU(alpha=0.3)(x)
+    x = layers.MaxPooling2D(pool_size=(2, 2))(x)
     x = layers.Flatten()(x)
     x = layers.Dense(256, activation='sigmoid')(x)
     x = layers.Dense(
@@ -132,11 +144,14 @@ def build(img_w, img_h, grid_w, grid_h, n_boxes, n_classes):
     return model
 
 
+grid_loss = tf.Variable([[float(x), float(y)] for y in range(GRID_CELLS) for x in range(GRID_CELLS)])
+
+
 def calc_loss(true, pred):
-    #print("calc loss called")
+    print(grid_loss.shape)
     true_xy = true[..., :2]
     #print(true_xy.shape)
-    pred_xy = pred[..., :2]
+    pred_xy = pred[..., :2] + grid_loss
     #print(pred_xy.shape)
     true_wh = true[..., 2:4]
     pred_wh = pred[..., 2:4]
@@ -150,13 +165,11 @@ def calc_loss(true, pred):
 
 
 def calc_xy_loss(true_xy, pred_xy, true_conf):
-    #return k.sum(k.square(true_xy - pred_xy) * true_conf, axis=-1)
-    return k.sum(k.sum(k.square(true_xy - pred_xy),axis=-1)*true_conf, axis=-1)
+    return k.sum(k.square(true_xy - pred_xy),axis=-1)*true_conf
 
 
 def calc_wh_loss(true_wh, pred_wh, true_conf):
-    #return k.sum(k.square(true_wh - pred_wh) * true_conf, axis=-1)
-    return k.sum(k.sum(k.square(true_wh - pred_wh),axis=-1)*true_conf, axis=-1)
+    return k.sum(k.square(k.sqrt(true_wh) - k.sqrt(pred_wh)),axis=-1)*true_conf
 
 
 def calc_IOU(true_xy, pred_xy, true_wh, pred_wh):
@@ -171,8 +184,8 @@ def calc_IOU(true_xy, pred_xy, true_wh, pred_wh):
 def calc_conf_loss(true_conf, pred_conf, iou):
     obj_conf_loss = (true_conf*iou - pred_conf) + true_conf * 3.0
     noobj_conf_loss = (true_conf * iou - pred_conf) + (1 - true_conf) * 0.05
-    conf_loss = k.sum(k.square(obj_conf_loss + noobj_conf_loss), axis=-1)
-    print("conf_loss made")
+    conf_loss = k.square(obj_conf_loss + noobj_conf_loss)
+    print(conf_loss.shape)
     return conf_loss
 
 
@@ -188,7 +201,7 @@ model.compile(loss=calc_loss, optimizer=adam)
 #print("Done compiling")
 
 
-def test():
+def test(model):
     # TESTS
     fh = open("imageToSave.jpeg", "wb")
     # Get example image from images
@@ -198,7 +211,7 @@ def test():
     draw = ImageDraw.Draw(pic)
     # Get example label from labels
     example_label = model.predict(images[:1])[0]
-    label = example_label[..., 4] > 0.3
+    label = example_label[..., 4] > 0.15
     for i in range(label.shape[0]):
         if label[i]:
             print(example_label[i])
@@ -216,7 +229,7 @@ def test():
             # Draw bboxes with image type features
             draw.rectangle([(x_min * 320, y_min * 240), (x_max * 320, y_max * 240)],
                            outline=0xff0000,
-                           width=3, fill=None)
+                           width=int(example_label[i][4] * 3), fill=None)
     pic.show()
 
 
@@ -229,7 +242,7 @@ if args.train:
     #print("Before fit")
     model.fit(images, labels, batch_size=32, epochs=int(args.epoch))
     model.save_weights('weights_006.h5')
-    test()
+    test(model)
 else:
     model.load_weights('weights_006.h5')
-    test()
+    test(model)
