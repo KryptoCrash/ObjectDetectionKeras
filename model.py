@@ -128,10 +128,6 @@ def build(img_w, img_h, grid_w, grid_h, n_boxes, n_classes):
     x = layers.Conv2D(32, (3, 3))(x)
     x = layers.LeakyReLU(alpha=0.3)(x)
     x = layers.MaxPooling2D(pool_size=(2, 2))(x)
-    x = layers.Conv2D(16, (3, 3))(x)
-    x = layers.Conv2D(32, (3, 3))(x)
-    x = layers.LeakyReLU(alpha=0.3)(x)
-    x = layers.MaxPooling2D(pool_size=(2, 2))(x)
     x = layers.Flatten()(x)
     x = layers.Dense(256, activation='sigmoid')(x)
     x = layers.Dense(
@@ -195,25 +191,24 @@ def calc_conf_loss(true_conf, pred_conf, iou):
 #print("calling build")
 model = build(IMG_WIDTH, IMG_HEIGHT, GRID_CELLS, GRID_CELLS, N_BOXES, N_CLASSES)
 #print("Build should be completed")
-adam = keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, decay=0.01)
+adam = keras.optimizers.Adam(lr=0.01, beta_1=0.9, beta_2=0.999, decay=0.01)
 #print("compiling")
 model.compile(loss=calc_loss, optimizer=adam)
 #print("Done compiling")
 
 
-def test(model):
+def test(model, image_n):
     # TESTS
     fh = open("imageToSave.jpeg", "wb")
     # Get example image from images
-    fh.write(encode_img(images[0]).numpy())
+    fh.write(encode_img(images[image_n]).numpy())
     fh.close()
     pic = Image.open('imageToSave.jpeg')
     draw = ImageDraw.Draw(pic)
     # Get example label from labels
-    example_label = model.predict(images[:1])[0]
-    label = example_label[..., 4] > 0.15
-    for i in range(label.shape[0]):
-        if label[i]:
+    example_label = model.predict(tf.convert_to_tensor([images[image_n]], dtype=tf.float32))[0]
+    for i in range(144):
+        if example_label[i][4] > 0.15:
             print(example_label[i])
             # Convert tensor type features back into image type features
             grid_x = i % GRID_CELLS
@@ -240,9 +235,15 @@ args = parser.parse_args()
 
 if args.train:
     #print("Before fit")
-    model.fit(images, labels, batch_size=32, epochs=int(args.epoch))
+    model.fit(images, labels, batch_size=4, epochs=int(args.epoch))
     model.save_weights('weights_006.h5')
-    test(model)
+    test(model, 0)
+    test(model, 1)
+    test(model, 2)
+    test(model, 3)
 else:
     model.load_weights('weights_006.h5')
-    test(model)
+    test(model, 0)
+    test(model, 1)
+    test(model, 2)
+    test(model, 107)
