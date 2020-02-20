@@ -19,6 +19,7 @@ IMG_WIDTH = 416
 GRID_CELLS = 12
 N_BOXES = 1
 N_CLASSES = 0
+tf.config.experimental_run_functions_eagerly(True)
 
 
 raw_image_dataset = tf.data.TFRecordDataset('./train.record')
@@ -133,10 +134,11 @@ def build(img_w, img_h, grid_w, grid_h, n_boxes, n_classes):
 
 
 def calc_loss(true, pred):
+    grid = np.array([ [float(x),float(y)] for y in range(GRID_CELLS) for x in range(GRID_CELLS)])
     #print("calc loss called")
-    true_xy = true[..., :2]
+    true_xy = true[..., :2] + k.variable(grid)
     #print(true_xy.shape)
-    pred_xy = pred[..., :2]
+    pred_xy = pred[..., :2] + k.variable(grid)
     #print(pred_xy.shape)
     true_wh = true[..., 2:4]
     pred_wh = pred[..., 2:4]
@@ -156,7 +158,7 @@ def calc_xy_loss(true_xy, pred_xy, true_conf):
 
 def calc_wh_loss(true_wh, pred_wh, true_conf):
     #return k.sum(k.square(true_wh - pred_wh) * true_conf, axis=-1)
-    return k.sum(k.sum(k.square(true_wh - pred_wh),axis=-1)*true_conf, axis=-1)
+    return k.sum(k.sum(k.square(k.sqrt(true_wh) - k.sqrt(pred_wh)),axis=-1)*true_conf, axis=-1)
 
 
 def calc_IOU(true_xy, pred_xy, true_wh, pred_wh):
@@ -172,7 +174,7 @@ def calc_conf_loss(true_conf, pred_conf, iou):
     obj_conf_loss = (true_conf*iou - pred_conf) + true_conf * 3.0
     noobj_conf_loss = (true_conf * iou - pred_conf) + (1 - true_conf) * 0.05
     conf_loss = k.sum(k.square(obj_conf_loss + noobj_conf_loss), axis=-1)
-    print("conf_loss made")
+    #print("conf_loss made")
     return conf_loss
 
 
@@ -198,7 +200,7 @@ def test():
     draw = ImageDraw.Draw(pic)
     # Get example label from labels
     example_label = model.predict(images[:1])[0]
-    label = example_label[..., 4] > 0.3
+    label = example_label[..., 4] > 0.15
     for i in range(label.shape[0]):
         if label[i]:
             print(example_label[i])
