@@ -167,11 +167,11 @@ def calc_IOU(true_xy, pred_xy, true_wh, pred_wh):
     union_area = pred_area + true_area - intersect_area
     return intersect_area / union_area
 
-#@tf.function
+
 def calc_conf_loss(true_conf, pred_conf, iou):
-    c = tf.map_fn(lambda x: tf.cond(x, lambda: 1.0, lambda: 0.01), tf.math.equal(true_conf, tf.ones_like(true_conf)), dtype=tf.float32)
-    print("C made")
-    conf_loss = k.sum(tf.multiply(k.square(true_conf*iou - pred_conf), c), axis=-1)
+    obj_conf_loss = (true_conf*iou - pred_conf) + true_conf * 3.0
+    noobj_conf_loss = (true_conf * iou - pred_conf) + (1 - true_conf) * 0.05
+    conf_loss = k.sum(k.square(obj_conf_loss + noobj_conf_loss), axis=-1)
     print("conf_loss made")
     return conf_loss
 
