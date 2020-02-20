@@ -19,7 +19,7 @@ IMG_WIDTH = 416
 GRID_CELLS = 12
 N_BOXES = 1
 N_CLASSES = 0
-tf.config.experimental_run_functions_eagerly(True)
+#tf.config.experimental_run_functions_eagerly(True)
 
 
 raw_image_dataset = tf.data.TFRecordDataset('./train.record')
@@ -145,7 +145,7 @@ grid_loss = tf.Variable([[float(x), float(y)] for y in range(GRID_CELLS) for x i
 
 
 def calc_loss(true, pred):
-    print(grid_loss.shape)
+    #print(grid_loss.shape)
     true_xy = true[..., :2]
     #print(true_xy.shape)
     pred_xy = pred[..., :2] + grid_loss
@@ -182,7 +182,7 @@ def calc_conf_loss(true_conf, pred_conf, iou):
     obj_conf_loss = (true_conf*iou - pred_conf) + true_conf * 3.0
     noobj_conf_loss = (true_conf * iou - pred_conf) + (1 - true_conf) * 0.05
     conf_loss = k.square(obj_conf_loss + noobj_conf_loss)
-    print(conf_loss.shape)
+    #print(conf_loss.shape)
     return conf_loss
 
 
