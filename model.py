@@ -146,7 +146,7 @@ def calc_loss(true, pred):
     wh_loss = calc_wh_loss(true_wh, pred_wh, true_conf)
     conf_loss = calc_conf_loss(true_conf, pred_conf, calc_IOU(true_xy, pred_xy, true_wh, pred_wh))
     #print("calc loss completed")
-    return xy_loss + wh_loss + conf_loss
+    return 5 * xy_loss + 5 * wh_loss + conf_loss
 
 
 def calc_xy_loss(true_xy, pred_xy, true_conf):
@@ -167,10 +167,14 @@ def calc_IOU(true_xy, pred_xy, true_wh, pred_wh):
     union_area = pred_area + true_area - intersect_area
     return intersect_area / union_area
 
-
+#@tf.function
 def calc_conf_loss(true_conf, pred_conf, iou):
-    return k.sum(k.square(true_conf*iou - pred_conf),axis=-1)
-    #return k.sum(k.sum(k.square(true_conf - pred_conf),axis=-1)*iou, axis=-1)
+    c = tf.map_fn(lambda x: tf.cond(x, lambda: 1.0, lambda: 0.01), tf.math.equal(true_conf, tf.ones_like(true_conf)), dtype=tf.float32)
+    print("C made")
+    conf_loss = k.sum(tf.multiply(k.square(true_conf*iou - pred_conf), c), axis=-1)
+    print("conf_loss made")
+    return conf_loss
+
 
 # Format dataset
 (images, labels) = format_dataset(parsed_image_dataset)
