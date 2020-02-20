@@ -129,6 +129,7 @@ def build(img_w, img_h, grid_w, grid_h, n_boxes, n_classes):
     x = layers.Conv2D(32, (3, 3))(x)
     x = layers.LeakyReLU(alpha=0.3)(x)
     x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+    x = layers.Dropout(0.25)(x)
     x = layers.Flatten()(x)
     x = layers.Dense(256, activation='sigmoid')(x)
     x = layers.Dense(
@@ -189,10 +190,11 @@ def calc_conf_loss(true_conf, pred_conf, iou):
 # Format dataset
 (images, labels) = format_dataset(parsed_image_dataset)
 
+
 #print("calling build")
 model = build(IMG_WIDTH, IMG_HEIGHT, GRID_CELLS, GRID_CELLS, N_BOXES, N_CLASSES)
 #print("Build should be completed")
-adam = keras.optimizers.Adam(lr=0.01, beta_1=0.9, beta_2=0.999, decay=0.01)
+adam = keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, decay=0.01)
 #print("compiling")
 model.compile(loss=calc_loss, optimizer=adam)
 #print("Done compiling")
@@ -232,11 +234,12 @@ def test(model, image_n):
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('--train', help='train', action='store_true')
 parser.add_argument('--epoch', help='epoch', const='int', nargs='?', default=1)
+parser.add_argument('--batch', help='batch size', const='int', nargs='?', default=4)
 args = parser.parse_args()
 
 if args.train:
     #print("Before fit")
-    model.fit(images, labels, batch_size=4, epochs=int(args.epoch))
+    model.fit(images, labels, batch_size=int(args.batch), epochs=int(args.epoch))
     model.save_weights('weights_006.h5')
     test(model, 0)
     test(model, 1)
