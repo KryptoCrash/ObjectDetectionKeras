@@ -19,6 +19,7 @@ IMG_WIDTH = 416
 GRID_CELLS = 12
 N_BOXES = 1
 N_CLASSES = 0
+tf.config.experimental_run_functions_eagerly(True)
 
 
 raw_image_dataset = tf.data.TFRecordDataset('./train.record')
