@@ -12,10 +12,11 @@ import pathlib
 import io
 import argparse
 from keras.models import Model
-from keras.layers import Input, Conv2D, GlobalAveragePooling2D, Dense
+from keras.layers import Input, Conv2D, GlobalAveragePooling2D, Dense, Reshape
 from keras.layers import add, Activation, BatchNormalization
 from keras.layers.advanced_activations import LeakyReLU
 from keras.regularizers import l2
+import tensorflow.keras
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 BATCH_SIZE = 32
@@ -224,16 +225,17 @@ def darknet_base(inputs):
     return x
 
 
-def build():
+def build(img_w, img_h, grid_w, grid_h, n_boxes, n_classes):
     """Darknet-53 classifier.
     """
-    inputs = Input(shape=(416, 416, 3))
+    inputs = tf.keras.Input(shape=(img_w, img_h, 3))
     x = darknet_base(inputs)
 
     x = GlobalAveragePooling2D()(x)
-    x = Dense(1000, activation='softmax')(x)
-
-    model = Model(inputs, x)
+    x = Dense(1000, activation='sigmoid')(x)
+    x = tensorflow.keras.layers.Dense(grid_w * grid_h * (n_boxes * 5 + n_classes), activation='sigmoid')(x)
+    outputs = tensorflow.keras.layers.Reshape( (grid_w * grid_h, (n_boxes * 5 + n_classes)))(x)
+    model = tf.keras.Model(inputs=inputs, outputs=outputs, name='YoloV3')
 
     return model
 
@@ -290,8 +292,8 @@ def calc_conf_loss(true_conf, pred_conf, iou):
 
 
 print("calling build")
-#model = build(IMG_WIDTH, IMG_HEIGHT, GRID_CELLS, GRID_CELLS, N_BOXES, N_CLASSES)
-model = build()
+model = build(IMG_WIDTH, IMG_HEIGHT, GRID_CELLS, GRID_CELLS, N_BOXES, N_CLASSES)
+#model = build()
 print("Build should be completed")
 adam = keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, decay=0.01)
 print("compiling")
