@@ -11,12 +11,11 @@ import glob
 import pathlib
 import io
 import argparse
-from keras.models import Model
-from keras.layers import Input, Conv2D, GlobalAveragePooling2D, Dense, Reshape
-from keras.layers import add, Activation, BatchNormalization
-from keras.layers.advanced_activations import LeakyReLU
-from keras.regularizers import l2
-import tensorflow.keras
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Conv2D, GlobalAveragePooling2D, Dense, Reshape
+from tensorflow.keras.layers import add, Activation, BatchNormalization
+from tensorflow.keras.layers import LeakyReLU
+from tensorflow.keras.regularizers import l2
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 BATCH_SIZE = 32
@@ -165,7 +164,7 @@ def conv2d_unit(x, filters, kernels, strides=1):
                padding='same',
                strides=strides,
                activation='linear',
-               kernel_regularizer=l2(5e-4))(x)
+               kernel_regularizer=tf.keras.regularizers.l2(5e-4))(x)
     x = BatchNormalization()(x)
     x = LeakyReLU(alpha=0.1)(x)
 
@@ -233,8 +232,8 @@ def build(img_w, img_h, grid_w, grid_h, n_boxes, n_classes):
 
     x = GlobalAveragePooling2D()(x)
     x = Dense(1000, activation='sigmoid')(x)
-    x = tensorflow.keras.layers.Dense(grid_w * grid_h * (n_boxes * 5 + n_classes), activation='sigmoid')(x)
-    outputs = tensorflow.keras.layers.Reshape( (grid_w * grid_h, (n_boxes * 5 + n_classes)))(x)
+    x = tf.keras.layers.Dense(grid_w * grid_h * (n_boxes * 5 + n_classes), activation='sigmoid')(x)
+    outputs = tf.keras.layers.Reshape( (grid_w * grid_h, (n_boxes * 5 + n_classes)))(x)
     model = tf.keras.Model(inputs=inputs, outputs=outputs, name='YoloV3')
 
     return model
@@ -256,14 +255,23 @@ def calc_loss(true, pred):
     true_conf = true[..., 4]
     pred_conf = pred[..., 4]
     xy_loss = calc_xy_loss(true_xy, pred_xy, true_conf)
+    print('xy')
+    print(xy_loss.shape)
     wh_loss = calc_wh_loss(true_wh, pred_wh, true_conf)
+    print('wh')
+    print(wh_loss.shape)
     conf_loss = calc_conf_loss(true_conf, pred_conf, calc_IOU(true_xy, pred_xy, true_wh, pred_wh))
+    print('conf')
+    print(conf_loss.shape)
+    square_loss = k.sum(k.square(pred[..., 2]-pred[..., 3]) * true_conf, axis=-1)
+    print('square')
+    print(square_loss.shape)
     #print("calc loss completed")
-    return 5 * xy_loss + 5 * wh_loss + conf_loss
+    return 5 * xy_loss + 5 * wh_loss + conf_loss + 0.1 * square_loss
 
 
 def calc_xy_loss(true_xy, pred_xy, true_conf):
-    return k.sum(k.square(true_xy - pred_xy),axis=-1)*true_conf
+    return k.sum(k.sum(k.square(true_xy - pred_xy),axis=-1)*true_conf, axis = -1)
 
 
 def calc_wh_loss(true_wh, pred_wh, true_conf):
@@ -281,7 +289,7 @@ def calc_IOU(true_xy, pred_xy, true_wh, pred_wh):
 
 def calc_conf_loss(true_conf, pred_conf, iou):
     obj_conf_loss = (true_conf*iou - pred_conf) + true_conf * 3.0
-    noobj_conf_loss = (true_conf * iou - pred_conf) + (1 - true_conf) * 0.05
+    noobj_conf_loss = (true_conf * iou - pred_conf) + (1 - true_conf) * 0.1
     conf_loss = k.square(obj_conf_loss + noobj_conf_loss)
     #print(conf_loss.shape)
     return conf_loss
@@ -311,15 +319,15 @@ def test(model, image_n):
     draw = ImageDraw.Draw(pic)
     # Get example label from labels
     layer_outputs = model.layers[-1].output
-    print(layer_outputs)
+    #print(layer_outputs)
     # Extracts the outputs of the top 12 layers
     #activation_model = keras.Model(inputs=model.input, outputs=layer_outputs) # Creates a model that will return these outputs, given the model input
     example_label = model.predict(tf.convert_to_tensor([images[image_n]], dtype=tf.float32))[0]
     #print (example_label)
     #print(example_label.shape)
     for i in range(144):
-        if example_label[i][4] > 0.15:
-            print(example_label[i])
+        if example_label[i][4] > 0.3:
+            #print(example_label[i])
             # Convert tensor type features back into image type features
             grid_x = i % GRID_CELLS
             grid_y = (i - grid_x) / GRID_CELLS
@@ -342,6 +350,7 @@ parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('--train', help='train', action='store_true')
 parser.add_argument('--epoch', help='epoch', const='int', nargs='?', default=1)
 parser.add_argument('--batch', help='batch size', const='int', nargs='?', default=4)
+parser.add_argument('--reset', help='continue training', action='store_true')
 args = parser.parse_args()
 
 if args.train:
@@ -361,8 +370,11 @@ if args.train:
     # print('labels made')
 
     # print(images.shape)
+    if not args.reset:
+        print("CONTINUE")
+        model.load_weights("weights_006.h5")
     print("fitting")
-    model.fit(images, labels, steps_per_epoch=105, epochs=int(args.epoch))
+    model.fit(images, labels, steps_per_epoch=211, epochs=int(args.epoch))
     model.save_weights('weights_006.h5')
     test(model, 0)
     test(model, 1)
