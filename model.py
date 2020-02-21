@@ -11,6 +11,11 @@ import glob
 import pathlib
 import io
 import argparse
+from keras.models import Model
+from keras.layers import Input, Conv2D, GlobalAveragePooling2D, Dense
+from keras.layers import add, Activation, BatchNormalization
+from keras.layers.advanced_activations import LeakyReLU
+from keras.regularizers import l2
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 BATCH_SIZE = 32
@@ -110,35 +115,126 @@ def format_dataset(dataset):
     return (images, labels)
 
 
-def build(img_w, img_h, grid_w, grid_h, n_boxes, n_classes):
-    #print("build called")
-    inputs = tf.keras.Input(shape=(img_w, img_h, 3))
-    x = layers.Conv2D(16, (1, 1))(inputs)
-    x = layers.Conv2D(32, (3, 3))(x)
-    x = layers.LeakyReLU(alpha=0.3)(x)
-    x = layers.MaxPooling2D(pool_size=(2, 2))(x)
-    x = layers.Conv2D(16, (3, 3))(x)
-    x = layers.Conv2D(32, (3, 3))(x)
-    x = layers.LeakyReLU(alpha=0.3)(x)
-    x = layers.MaxPooling2D(pool_size=(2, 2))(x)
-    x = layers.Conv2D(16, (3, 3))(x)
-    x = layers.Conv2D(32, (3, 3))(x)
-    x = layers.LeakyReLU(alpha=0.3)(x)
-    x = layers.MaxPooling2D(pool_size=(2, 2))(x)
-    x = layers.Conv2D(16, (3, 3))(x)
-    x = layers.Conv2D(32, (3, 3))(x)
-    x = layers.LeakyReLU(alpha=0.3)(x)
-    x = layers.MaxPooling2D(pool_size=(2, 2))(x)
-    x = layers.Dropout(0.25)(x)
-    x = layers.Flatten()(x)
-    x = layers.Dense(256, activation='sigmoid')(x)
-    x = layers.Dense(
-        grid_w * grid_h * (n_boxes * 5 + n_classes), activation='sigmoid')(x)
-    outputs = layers.Reshape(
-        (grid_w * grid_h, (n_boxes * 5 + n_classes)))(x)
+# def build(img_w, img_h, grid_w, grid_h, n_boxes, n_classes):
+#     #print("build called")
+#     inputs = tf.keras.Input(shape=(img_w, img_h, 3))
+#     x = layers.Conv2D(16, (1, 1))(inputs)
+#     x = layers.Conv2D(32, (3, 3))(x)
+#     x = layers.LeakyReLU(alpha=0.3)(x)
+#     x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+#     x = layers.Conv2D(16, (3, 3))(x)
+#     x = layers.Conv2D(32, (3, 3))(x)
+#     x = layers.LeakyReLU(alpha=0.3)(x)
+#     x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+#     x = layers.Conv2D(16, (3, 3))(x)
+#     x = layers.Conv2D(32, (3, 3))(x)
+#     x = layers.LeakyReLU(alpha=0.3)(x)
+#     x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+#     x = layers.Conv2D(16, (3, 3))(x)
+#     x = layers.Conv2D(32, (3, 3))(x)
+#     x = layers.LeakyReLU(alpha=0.3)(x)
+#     x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+#     x = layers.Flatten()(x)
+#     x = layers.Dense(256, activation='sigmoid')(x)
+#     x = layers.Dense(
+#         grid_w * grid_h * (n_boxes * 5 + n_classes), activation='sigmoid')(x)
+#     outputs = layers.Reshape(
+#         (grid_w * grid_h, (n_boxes * 5 + n_classes)))(x)
 
-    model = tf.keras.Model(inputs=inputs, outputs=outputs, name='YoloV3')
-    #print("build completed")
+#     model = tf.keras.Model(inputs=inputs, outputs=outputs, name='YoloV3')
+#     #print("build completed")
+#     return model
+    
+def conv2d_unit(x, filters, kernels, strides=1):
+    """Convolution Unit
+    This function defines a 2D convolution operation with BN and LeakyReLU.
+    # Arguments
+        x: Tensor, input tensor of conv layer.
+        filters: Integer, the dimensionality of the output space.
+        kernels: An integer or tuple/list of 2 integers, specifying the
+            width and height of the 2D convolution window.
+        strides: An integer or tuple/list of 2 integers,
+            specifying the strides of the convolution along the width and
+            height. Can be a single integer to specify the same value for
+            all spatial dimensions.
+    # Returns
+            Output tensor.
+    """
+    x = Conv2D(filters, kernels,
+               padding='same',
+               strides=strides,
+               activation='linear',
+               kernel_regularizer=l2(5e-4))(x)
+    x = BatchNormalization()(x)
+    x = LeakyReLU(alpha=0.1)(x)
+
+    return x
+
+
+def residual_block(inputs, filters):
+    """Residual Block
+    This function defines a 2D convolution operation with BN and LeakyReLU.
+    # Arguments
+        x: Tensor, input tensor of residual block.
+        kernels: An integer or tuple/list of 2 integers, specifying the
+            width and height of the 2D convolution window.
+    # Returns
+        Output tensor.
+    """
+    x = conv2d_unit(inputs, filters, (1, 1))
+    x = conv2d_unit(x, 2 * filters, (3, 3))
+    x = add([inputs, x])
+    x = Activation('linear')(x)
+
+    return x
+
+
+def stack_residual_block(inputs, filters, n):
+    """Stacked residual Block
+    """
+    x = residual_block(inputs, filters)
+
+    for i in range(n - 1):
+        x = residual_block(x, filters)
+
+    return x
+
+
+def darknet_base(inputs):
+    """Darknet-53 base model.
+    """
+
+    x = conv2d_unit(inputs, 32, (3, 3))
+
+    x = conv2d_unit(x, 64, (3, 3), strides=2)
+    x = stack_residual_block(x, 32, n=1)
+
+    x = conv2d_unit(x, 128, (3, 3), strides=2)
+    x = stack_residual_block(x, 64, n=2)
+
+    x = conv2d_unit(x, 256, (3, 3), strides=2)
+    x = stack_residual_block(x, 128, n=8)
+
+    x = conv2d_unit(x, 512, (3, 3), strides=2)
+    x = stack_residual_block(x, 256, n=8)
+
+    x = conv2d_unit(x, 1024, (3, 3), strides=2)
+    x = stack_residual_block(x, 512, n=4)
+
+    return x
+
+
+def build():
+    """Darknet-53 classifier.
+    """
+    inputs = Input(shape=(416, 416, 3))
+    x = darknet_base(inputs)
+
+    x = GlobalAveragePooling2D()(x)
+    x = Dense(1000, activation='softmax')(x)
+
+    model = Model(inputs, x)
+
     return model
 
 
@@ -146,8 +242,8 @@ grid_loss = tf.Variable([[float(x), float(y)] for y in range(GRID_CELLS) for x i
 
 
 def calc_loss(true, pred):
-    print(true.shape)
-    print(pred.shape)
+    #print(true.shape)
+    #print(pred.shape)
     #print(grid_loss.shape)
     true_xy = true[..., :2]
     #print(true_xy.shape)
@@ -193,13 +289,14 @@ def calc_conf_loss(true_conf, pred_conf, iou):
 (images, labels) = format_dataset(parsed_image_dataset)
 
 
-#print("calling build")
-model = build(IMG_WIDTH, IMG_HEIGHT, GRID_CELLS, GRID_CELLS, N_BOXES, N_CLASSES)
-#print("Build should be completed")
+print("calling build")
+#model = build(IMG_WIDTH, IMG_HEIGHT, GRID_CELLS, GRID_CELLS, N_BOXES, N_CLASSES)
+model = build()
+print("Build should be completed")
 adam = keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, decay=0.01)
-#print("compiling")
+print("compiling")
 model.compile(loss=calc_loss, optimizer=adam)
-#print("Done compiling")
+print("Done compiling")
 
 
 def test(model, image_n):
@@ -211,7 +308,13 @@ def test(model, image_n):
     pic = Image.open('imageToSave.jpeg')
     draw = ImageDraw.Draw(pic)
     # Get example label from labels
+    layer_outputs = model.layers[-1].output
+    print(layer_outputs)
+    # Extracts the outputs of the top 12 layers
+    #activation_model = keras.Model(inputs=model.input, outputs=layer_outputs) # Creates a model that will return these outputs, given the model input
     example_label = model.predict(tf.convert_to_tensor([images[image_n]], dtype=tf.float32))[0]
+    #print (example_label)
+    #print(example_label.shape)
     for i in range(144):
         if example_label[i][4] > 0.15:
             print(example_label[i])
@@ -228,8 +331,8 @@ def test(model, image_n):
             y_max = y_min + height
             # Draw bboxes with image type features
             draw.rectangle([(x_min * 320, y_min * 240), (x_max * 320, y_max * 240)],
-                           outline=0xff0000,
-                           width=int(example_label[i][4] * 3), fill=None)
+                            outline=0xff0000,
+                            width=int(example_label[i][4] * 3), fill=None)
     pic.show()
 
 
@@ -240,8 +343,24 @@ parser.add_argument('--batch', help='batch size', const='int', nargs='?', defaul
 args = parser.parse_args()
 
 if args.train:
-    #print("Before fit")
-    model.fit(images, labels, batch_size=int(args.batch), epochs=int(args.epoch))
+    # print("Before fit")
+    # images = []
+    # for i in range(100):
+    #     t = tf.random.uniform(shape = [416, 416, 3], dtype = tf.float32)
+    #     images.append(t)
+    # images = tf.convert_to_tensor(images, dtype=tf.float32)
+    # print('images made')
+       
+    # labels = []
+    # for i in range(100):
+    #     t = tf.random.uniform(shape = [144, 5], dtype = tf.float32)
+    #     labels.append(t)
+    # labels = tf.convert_to_tensor(labels, dtype=tf.float32)
+    # print('labels made')
+
+    # print(images.shape)
+    print("fitting")
+    model.fit(images, labels, steps_per_epoch=105, epochs=int(args.epoch))
     model.save_weights('weights_006.h5')
     test(model, 0)
     test(model, 1)
