@@ -263,7 +263,7 @@ def calc_loss(true, pred):
     conf_loss = calc_conf_loss(true_conf, pred_conf, calc_IOU(true_xy, pred_xy, true_wh, pred_wh))
     print('conf')
     print(conf_loss.shape)
-    square_loss = k.sum(k.square(pred[..., 2]-pred[..., 3]) * true_conf, axis=-1)
+    square_loss = tf.reduce_sum(k.square(k.sqrt(pred[..., 2])-k.sqrt(pred[..., 3])) * true_conf, axis=-1)
     print('square')
     print(square_loss.shape)
     #print("calc loss completed")
@@ -271,11 +271,11 @@ def calc_loss(true, pred):
 
 
 def calc_xy_loss(true_xy, pred_xy, true_conf):
-    return k.sum(k.sum(k.square(true_xy - pred_xy),axis=-1)*true_conf, axis = -1)
+    return tf.reduce_sum(tf.reduce_sum(k.square(true_xy - pred_xy),axis=-1) * true_conf, axis=-1)
 
 
 def calc_wh_loss(true_wh, pred_wh, true_conf):
-    return k.sum(k.square(k.sqrt(true_wh) - k.sqrt(pred_wh)),axis=-1)*true_conf
+    return tf.reduce_sum(tf.reduce_sum(k.square(k.sqrt(true_wh) - k.sqrt(pred_wh)), axis=-1) * true_conf, axis = -1)
 
 
 def calc_IOU(true_xy, pred_xy, true_wh, pred_wh):
@@ -288,9 +288,9 @@ def calc_IOU(true_xy, pred_xy, true_wh, pred_wh):
 
 
 def calc_conf_loss(true_conf, pred_conf, iou):
-    obj_conf_loss = (true_conf*iou - pred_conf) + true_conf * 3.0
-    noobj_conf_loss = (true_conf * iou - pred_conf) + (1 - true_conf) * 0.1
-    conf_loss = k.square(obj_conf_loss + noobj_conf_loss)
+    obj_conf_loss = (true_conf*iou - pred_conf) + true_conf * 1
+    noobj_conf_loss = (true_conf * iou - pred_conf) + (1 - true_conf) * 0.5
+    conf_loss = tf.reduce_sum(k.square(obj_conf_loss + noobj_conf_loss), axis = -1)
     #print(conf_loss.shape)
     return conf_loss
 
@@ -326,7 +326,7 @@ def test(model, image_n):
     #print (example_label)
     #print(example_label.shape)
     for i in range(144):
-        if example_label[i][4] > 0.3:
+        if example_label[i][4] > 0.1:
             #print(example_label[i])
             # Convert tensor type features back into image type features
             grid_x = i % GRID_CELLS
@@ -374,7 +374,7 @@ if args.train:
         print("CONTINUE")
         model.load_weights("weights_006.h5")
     print("fitting")
-    model.fit(images, labels, steps_per_epoch=211, epochs=int(args.epoch))
+    model.fit(images, labels, steps_per_epoch=422, epochs=int(args.epoch))
     model.save_weights('weights_006.h5')
     test(model, 0)
     test(model, 1)
