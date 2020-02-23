@@ -21,7 +21,7 @@ AUTOTUNE = tf.data.experimental.AUTOTUNE
 BATCH_SIZE = 32
 IMG_HEIGHT = 416
 IMG_WIDTH = 416
-GRID_CELLS = 12
+GRID_CELLS = 13
 N_BOXES = 1
 N_CLASSES = 0
 #tf.config.experimental_run_functions_eagerly(True)
@@ -164,7 +164,7 @@ def conv2d_unit(x, filters, kernels, strides=1):
                padding='same',
                strides=strides,
                activation='linear',
-               kernel_regularizer=tf.keras.regularizers.l2(5e-4))(x)
+               kernel_regularizer=tf.keras.regularizers.l2(0.0005))(x)
     x = BatchNormalization()(x)
     x = LeakyReLU(alpha=0.1)(x)
 
@@ -221,6 +221,10 @@ def darknet_base(inputs):
     x = conv2d_unit(x, 1024, (3, 3), strides=2)
     x = stack_residual_block(x, 512, n=4)
 
+    x = conv2d_unit(x, 1024, (3, 3), strides=1)
+    x = conv2d_unit(x, 1024, (3, 3), strides=1)
+    x = conv2d_unit(x, 1024, (3, 3), strides=1)
+
     return x
 
 
@@ -230,10 +234,14 @@ def build(img_w, img_h, grid_w, grid_h, n_boxes, n_classes):
     inputs = tf.keras.Input(shape=(img_w, img_h, 3))
     x = darknet_base(inputs)
 
-    x = GlobalAveragePooling2D()(x)
-    x = Dense(1000, activation='sigmoid')(x)
-    x = tf.keras.layers.Dense(grid_w * grid_h * (n_boxes * 5 + n_classes), activation='sigmoid')(x)
-    outputs = tf.keras.layers.Reshape( (grid_w * grid_h, (n_boxes * 5 + n_classes)))(x)
+    x = Conv2D(5, (1, 1),
+               padding='same',
+               strides=1,
+               activation='linear',
+               kernel_regularizer=tf.keras.regularizers.l2(0.0005))(x)
+    x = LeakyReLU(alpha=0.1)(x)
+
+    outputs = tf.keras.layers.Reshape((grid_w * grid_h, (n_boxes * 5 + n_classes)))(x)
     model = tf.keras.Model(inputs=inputs, outputs=outputs, name='YoloV3')
 
     return model
